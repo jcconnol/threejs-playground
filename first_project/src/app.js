@@ -1,15 +1,21 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-// import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { fogParticles } from './fogParticles'
 import { Water } from 'three/addons/objects/Water.js';
 import { Sky } from 'three/addons/objects/Sky.js';
+import CSS3DRenderer from './CSS3DRenderer';
 
-let container, stats;
 let water, sun, mesh;
 let moveForward = false, moveBackward = false, rotateLeft = false, rotateRight = false;
 
-const maxSpeed = 1;
-const acceleration = 0.005;
+
+const pirateShipThresholdDistance = 500;
+let popupVisible = false;
+
+
+const maxSpeed = 3;
+const acceleration = 0.025;
 let speed = 0;
 let direction = new THREE.Vector3(0, 0, 1); 
 
@@ -22,9 +28,40 @@ document.body.appendChild(renderer.domElement);
 
 // Camera setup
 let camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-let cameraX = -50;
-let cameraY = 50;
-let cameraZ = 50;
+let cameraX = -70;
+let cameraY = 70;
+let cameraZ = 70;
+
+
+
+// Scene Setup
+let lighthouse;
+loadModel('./models/low_poly_lighthouse.glb', { x: 1100, y: -120, z: -100 }).then(loadedLighthouse => {
+    lighthouse = loadedLighthouse;
+    lighthouse.rotation.y = Math.PI * 0.8;
+    lighthouse.scale.set(0.5, 0.5, 0.5);
+});
+
+let longBeach;
+loadModel('./models/long_beach.glb', { x: -1300, y: 9, z: 720 }).then(loadedLongBeach => {
+    longBeach = loadedLongBeach;
+    longBeach.scale.set(3, 3, 3);
+});
+
+let islandRuins;
+loadModel('./models/island_ruins.glb', { x: 820, y: -6, z: 1000 }).then(loadedIslandRuins => {
+    islandRuins = loadedIslandRuins;
+    islandRuins.scale.set(10, 10, 10);
+});
+
+
+let pirateShip;
+loadModel('./models/pirate_ship.glb', { x: 1100, y: 12, z: 300 }).then(loadedPirateShip => {
+    pirateShip = loadedPirateShip;
+    pirateShip.scale.set(0.03, 0.03, 0.03);
+});
+
+
 
 
 // Boat setup
@@ -37,66 +74,15 @@ document.addEventListener('keydown', onKeyDown);
 document.addEventListener('keyup', onKeyUp);
 
 
-function loadModel(url, position) {
-    const loader = new GLTFLoader();
-    return new Promise((resolve, reject) => {
-        loader.load(url, (gltf) => {
-            gltf.scene.position.set(position.x, position.y, position.z);
-            scene.add(gltf.scene);
-            resolve(gltf.scene);
-        }, undefined, reject);
-    });
-}
-
-function onKeyDown(event) {
-    switch (event.code) {
-        case 'ArrowUp':
-        case 'KeyW':
-            moveForward = true;
-            break;
-        case 'ArrowDown':
-        case 'KeyS':
-            moveBackward = true;
-            break;
-        case 'ArrowLeft':
-        case 'KeyA':
-            rotateLeft = true;
-            break;
-        case 'ArrowRight':
-        case 'KeyD':
-            rotateRight = true;
-            break;
-    }
-}
-
-function onKeyUp(event) {
-    switch (event.code) {
-        case 'ArrowUp':
-        case 'KeyW':
-            moveForward = false;
-            break;
-        case 'ArrowDown':
-        case 'KeyS':
-            moveBackward = false;
-            break;
-        case 'ArrowLeft':
-        case 'KeyA':
-            rotateLeft = false;
-            break;
-        case 'ArrowRight':
-        case 'KeyD':
-            rotateRight = false;
-            break;
-    }
-}
 
 
 
-// const controls = new OrbitControls(camera, renderer.domElement);
-// controls.enableDamping = true;
-// controls.dampingFactor = 0.25;
-// controls.screenSpacePanning = false;
-// controls.maxPolarAngle = Math.PI / 2;
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.25;
+controls.screenSpacePanning = false;
+controls.maxPolarAngle = Math.PI / 2;
 
 
 sun = new THREE.Vector3();
@@ -164,9 +150,50 @@ scene.environment = renderTarget.texture;
 
 
 
+scene.add(fogParticles());
 
 
 
+
+
+// Create the popup element
+const popup = document.getElementById('popup');
+const cssRenderer = new CSS3DRenderer(popup);
+cssRenderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(cssRenderer.domElement);
+
+
+
+
+
+
+
+
+
+function showPopup() {
+    const popup = document.getElementById('popup');
+    if (popup) {
+        popup.style.visibility = '';
+    }
+}
+
+function hidePopup() {
+    const popup = document.getElementById('popup');
+    if (popup) {
+        popup.style.visibility = 'hidden';
+    }
+}
+
+
+
+
+
+const bounds = {
+    minX: -1000,
+    maxX: 1000,
+    minZ: -350,
+    maxZ: 1000
+};
 
 const animate = function () {
     requestAnimationFrame(animate);
@@ -181,17 +208,27 @@ const animate = function () {
 
         // Acceleration control
         if (moveForward) {
-            speed = Math.min(speed + acceleration, maxSpeed); // Accelerate forward to maxSpeed
+            speed = Math.min(speed + acceleration, maxSpeed);
         } else if (moveBackward) {
-            speed = Math.max(speed - acceleration, -maxSpeed / 2); // Reverse at half max speed
+            speed = Math.max(speed - acceleration, -maxSpeed / 2);
         } else {
-            // Gradual deceleration
-            speed *= 0.98;
-            if (Math.abs(speed) < 0.001) speed = 0; // Stop if speed is very low
+            speed *= 0.95;
+            if (Math.abs(speed) < 0.001) speed = 0;
         }
 
-        // Update boat position based on direction and speed
-        boat.position.add(direction.clone().multiplyScalar(-speed));
+        const potentialNewPosition = boat.position.clone().add(direction.clone().multiplyScalar(-speed));
+
+        if (
+            potentialNewPosition.x >= bounds.minX &&
+            potentialNewPosition.x <= bounds.maxX &&
+            potentialNewPosition.z >= bounds.minZ &&
+            potentialNewPosition.z <= bounds.maxZ
+        ) {
+            boat.position.copy(potentialNewPosition);
+        } else {
+            speed = 0;
+            console.log('Reached boundary limit!');
+        }
 
         // Camera follows boat's position but remains static relative to it
         camera.position.lerp(
@@ -201,7 +238,79 @@ const animate = function () {
         camera.lookAt(boat.position);
     }
 
+
+    if (pirateShip) {
+        const distance = boat.position.distanceTo(pirateShip.position);
+
+        if (distance < pirateShipThresholdDistance) {
+            if (!popupVisible) {
+                showPopup();
+            }
+        } else {
+            if (popupVisible) {
+                hidePopup();
+            }
+        }
+    }
+
     renderer.render(scene, camera);
+    cssRenderer.render(scene, camera);
 };
+
+
+function loadModel(url, position) {
+    const loader = new GLTFLoader();
+    return new Promise((resolve, reject) => {
+        loader.load(url, (gltf) => {
+            gltf.scene.position.set(position.x, position.y, position.z);
+            scene.add(gltf.scene);
+            resolve(gltf.scene);
+        }, undefined, reject);
+    });
+}
+
+function onKeyDown(event) {
+    switch (event.code) {
+        case 'ArrowUp':
+        case 'KeyW':
+            moveForward = true;
+            break;
+        case 'ArrowDown':
+        case 'KeyS':
+            moveBackward = true;
+            break;
+        case 'ArrowLeft':
+        case 'KeyA':
+            rotateLeft = true;
+            break;
+        case 'ArrowRight':
+        case 'KeyD':
+            rotateRight = true;
+            break;
+    }
+}
+
+
+function onKeyUp(event) {
+    switch (event.code) {
+        case 'ArrowUp':
+        case 'KeyW':
+            moveForward = false;
+            break;
+        case 'ArrowDown':
+        case 'KeyS':
+            moveBackward = false;
+            break;
+        case 'ArrowLeft':
+        case 'KeyA':
+            rotateLeft = false;
+            break;
+        case 'ArrowRight':
+        case 'KeyD':
+            rotateRight = false;
+            break;
+    }
+}
+
 
 animate();
